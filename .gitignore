@@ -1,0 +1,17 @@
+# 파이썬
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.venv-build/
+
+# 빌드 결과 (build.bat)
+build/
+dist/
+bin/deno.exe
+
+# 받은 음악
+추출사운드/
+
+# 서버가 시작할 때 만드는 파일
+web/static/options.js

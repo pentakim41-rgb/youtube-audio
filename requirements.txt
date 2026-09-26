@@ -1,0 +1,6 @@
+yt-dlp[default]>=2025.10.22
+mutagen>=1.47
+Pillow>=10.0
+customtkinter>=5.2
+imageio-ffmpeg>=0.5
+pytest>=8.0

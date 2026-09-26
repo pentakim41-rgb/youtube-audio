@@ -11,8 +11,11 @@ termux-setup-storage || true
 sleep 3
 
 echo "=== [2/5] 필요한 프로그램 설치 (python, ffmpeg, node) ==="
+# 업데이트 중 "설정 파일을 바꿀까요?" 질문에서 멈추지 않도록 새 설정 파일을 자동 선택
+APT_OPTS=(-o Dpkg::Options::=--force-confnew -o Dpkg::Options::=--force-confdef)
 pkg update -y
-pkg install -y python ffmpeg nodejs-lts python-pillow git curl
+pkg upgrade -y "${APT_OPTS[@]}"
+pkg install -y "${APT_OPTS[@]}" python ffmpeg nodejs-lts python-pillow git curl
 
 echo "=== [3/5] 파이썬 패키지 설치 (yt-dlp, mutagen) ==="
 pip_install() {

@@ -51,6 +51,12 @@ class History(_JsonStore):
         path = (rec.get("files") or {}).get(fmt, "")
         return path if path and Path(path).is_file() else ""
 
+    def formats(self, video_id: str) -> set[str]:
+        """파일이 아직 남아 있는, 예전에 받은 형식들."""
+        with self._lock:
+            files = dict((self.data.get(video_id) or {}).get("files") or {})
+        return {fmt for fmt, path in files.items() if path and Path(path).is_file()}
+
     def add(self, track: Track, fmt: str, path: str) -> None:
         with self._lock:
             rec = self.data.setdefault(track.video_id, {"files": {}})

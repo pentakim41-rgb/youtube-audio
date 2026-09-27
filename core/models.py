@@ -72,6 +72,7 @@ class Track:
     message: str = ""
     error_code: str = ""
     output_path: str = ""
+    formats: set[str] = field(default_factory=set)  # 이미 받은 형식 (mp3/wav)
     attempts: int = 0
     cancel_event: threading.Event = field(default_factory=threading.Event, repr=False)
 
@@ -79,6 +80,15 @@ class Track:
         if self.artist and self.title:
             return f"{self.artist} - {self.title}"
         return self.title or self.video_id
+
+    def needs(self, fmt: str) -> bool:
+        """fmt 형식으로 다운로드해야 하는지. 같은 형식으로 이미 받았거나 진행 중이면 False."""
+        return not self.status.active and fmt not in self.formats
+
+    def formats_text(self) -> str:
+        """받은 형식 표시용: 'mp3', 'wav', 'mp3 wav'."""
+        order = ("mp3", "wav")
+        return " ".join(sorted(self.formats, key=lambda f: order.index(f) if f in order else len(order)))
 
     def reset_for_retry(self) -> None:
         self.status = Status.READY

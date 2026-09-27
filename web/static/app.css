@@ -173,6 +173,7 @@ h1, h2, h3 { margin: 0; }
 .item .tag {
   flex: none; font-size: 11px; padding: 1px 6px; border-radius: 6px; background: var(--line); color: var(--muted);
 }
+.item .tag.fmt { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
 .st.DONE, .st.SKIPPED { color: var(--ok); }
 .st.FAILED { color: var(--danger); }
 .st.active { color: var(--primary); }

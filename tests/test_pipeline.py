@@ -220,3 +220,28 @@ def test_cancel_queued_and_concurrency_limit(tmp_path, monkeypatch):
     qm.shutdown()
     assert peak[0] <= 2
     assert len(set(finished)) == 5
+
+
+def test_same_track_in_other_format(tmp_path, monkeypatch, source, cover_bytes):
+    """목록의 한 곡을 mp3 로 받은 뒤 같은 줄에서 wav 로도 받는다 (같은 형식은 다시 받지 않음)."""
+    t = make_track()
+    run_track(tmp_path, monkeypatch, source, cover_bytes, t, format="mp3", on_exists="skip")
+    assert t.status == Status.DONE and t.formats == {"mp3"} and t.formats_text() == "mp3"
+    assert not t.needs("mp3") and t.needs("wav")
+
+    _, history, *_ = run_track(tmp_path, monkeypatch, source, cover_bytes, t, format="wav", on_exists="skip")
+    assert t.status == Status.DONE, t.message
+    assert t.formats_text() == "mp3 wav" and not t.needs("wav")
+    assert (tmp_path / "out" / "IU - Blueming.mp3").is_file()
+    assert (tmp_path / "out" / "IU - Blueming.wav").is_file()
+    assert history.formats("abcdefghijk") == {"mp3", "wav"}
+
+
+def test_needs():
+    t = make_track()
+    assert t.needs("mp3") and t.needs("wav") and t.formats_text() == ""
+    t.formats = {"wav", "mp3"}
+    assert t.formats_text() == "mp3 wav" and not t.needs("mp3")
+    t.formats = set()
+    t.status = Status.DOWNLOADING
+    assert not t.needs("mp3")  # 진행 중인 곡은 다시 넣지 않는다

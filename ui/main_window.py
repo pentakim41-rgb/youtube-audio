@@ -28,6 +28,7 @@ COLUMNS = (
     ("title", "제목", 280, "w"),
     ("album", "앨범", 170, "w"),
     ("length", "길이", 60, "center"),
+    ("formats", "다운로드", 80, "center"),
     ("status", "상태", 190, "w"),
 )
 
@@ -147,7 +148,7 @@ class MainWindow(ctk.CTk):
                       command=self._select_all).pack(side="left")
         ctk.CTkButton(actions, text="완료 항목 지우기", width=120, fg_color="gray55", hover_color="gray45",
                       command=self._clear_finished).pack(side="left", padx=6)
-        ctk.CTkButton(actions, text="선택 재시도", width=90, fg_color="gray55", hover_color="gray45",
+        ctk.CTkButton(actions, text="선택 다운로드", width=100, fg_color="gray55", hover_color="gray45",
                       command=self._retry_selected).pack(side="left")
         self.download_btn = ctk.CTkButton(actions, text="전체 다운로드", width=140, height=36,
                                           command=self._download_all)
@@ -233,7 +234,9 @@ class MainWindow(ctk.CTk):
         in_list = len(result.tracks) - len(fresh)
 
         # 이미 받은 곡 확인 (기록에 있고 파일이 아직 남아 있는 경우)
-        dupes = [t for t in fresh if self.history.find(t.video_id, self.settings.format)]
+        for t in fresh:
+            t.formats |= self.history.formats(t.video_id)
+        dupes = [t for t in fresh if self.settings.format in t.formats]
         if dupes:
             names = "\n".join(f"· {t.display_name()}" for t in dupes[:8])
             more = f"\n… 외 {len(dupes) - 8}곡" if len(dupes) > 8 else ""
@@ -260,7 +263,8 @@ class MainWindow(ctk.CTk):
         self._refresh_summary()
         if self.settings.auto_start:
             for t in fresh:
-                self.qm.enqueue(t)
+                if t.needs(self.settings.format):
+                    self.qm.enqueue(t)
 
     # ================================================================ 목록 조작
     def _selected_tracks(self) -> list[Track]:
@@ -325,16 +329,24 @@ class MainWindow(ctk.CTk):
             self._update_row(t)
 
     def _retry_selected(self) -> None:
+        fmt = self.settings.format
         for t in self._selected_tracks():
-            if t.status in (Status.FAILED, Status.CANCELLED):
+            if t.status in (Status.FAILED, Status.CANCELLED) or t.needs(fmt):
                 self.qm.enqueue(t)
 
     # ================================================================ 다운로드
     def _download_all(self) -> None:
-        targets = [t for uid in self.order if (t := self.tracks[uid]).status in (Status.READY, Status.FAILED, Status.CANCELLED)]
+        fmt = self.settings.format
+        targets = [t for uid in self.order if (t := self.tracks[uid]).needs(fmt)]
         if not targets:
-            messagebox.showinfo("다운로드", "다운로드할 곡이 없습니다. 링크를 먼저 추가하세요.", parent=self)
+            if self.order:
+                messagebox.showinfo("다운로드", f"목록의 곡을 모두 {fmt} 로 이미 받았습니다.", parent=self)
+            else:
+                messagebox.showinfo("다운로드", "다운로드할 곡이 없습니다. 링크를 먼저 추가하세요.", parent=self)
             return
+        already = sum(1 for t in self.tracks.values() if fmt in t.formats)
+        if already:
+            self.detail_label.configure(text=f"{fmt} 로 이미 받은 {already}곡은 건너뜀")
         self.qm.set_concurrency(self.settings.max_concurrent)
         for t in targets:
             self.qm.enqueue(t)
@@ -396,7 +408,7 @@ class MainWindow(ctk.CTk):
             no = self.order.index(t.uid) + 1
         except ValueError:
             no = len(self.order) + 1
-        return (no, t.artist, t.title, t.album, fmt_duration(t.duration), self._status_text(t))
+        return (no, t.artist, t.title, t.album, fmt_duration(t.duration), t.formats_text(), self._status_text(t))
 
     def _update_row(self, t: Track) -> None:
         iid = str(t.uid)

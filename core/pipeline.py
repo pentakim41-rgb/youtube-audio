@@ -169,6 +169,7 @@ class Pipeline:
         shutil.move(str(converted), str(final))
 
         track.output_path = str(final)
+        track.formats.add(settings.format)
         self.history.add(track, settings.format, str(final))
         if track.remember_artist and "artist" in track.edited and track.channel:
             self.memory.remember(track.channel, track.artist)
@@ -182,6 +183,7 @@ class Pipeline:
         final = namer.build_output_path(track, settings)
         if final.exists():
             track.output_path = str(final)
+            track.formats.add(settings.format)
             update(Status.SKIPPED, 100.0, "이미 같은 이름의 파일이 있어 건너뜀")
             return True
         return False

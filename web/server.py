@@ -177,7 +177,6 @@ class WebApp:
         self.lock = threading.RLock()
         self.tracks: dict[int, Track] = {}
         self.order: list[int] = []
-        self.already: set[int] = set()  # 예전에 받은 적 있는 곡 (표시용)
         self.pending_fetches = 0
         self.messages: list[dict] = []  # {id, level, text}
         self._msg_seq = 0
@@ -249,7 +248,8 @@ class WebApp:
             "message": t.message,
             "has_file": bool(t.output_path) and Path(t.output_path).is_file(),
             "file_name": Path(t.output_path).name if t.output_path else "",
-            "already": t.uid in self.already,
+            "formats": t.formats_text().split(),
+            "can_download": t.needs(self.settings.format),
         }
 
     def state(self, since_msg: int = 0) -> dict:
@@ -327,8 +327,8 @@ class WebApp:
             for t in fresh:
                 self.tracks[t.uid] = t
                 self.order.append(t.uid)
-                if self.history.find(t.video_id, self.settings.format):
-                    self.already.add(t.uid)
+                t.formats |= self.history.formats(t.video_id)
+                if self.settings.format in t.formats:
                     dupes += 1
             self.version += 1
         notes = []
@@ -339,12 +339,13 @@ class WebApp:
         if result.skipped:
             notes.append(f"비공개/삭제된 항목 {result.skipped}개 제외")
         if dupes:
-            notes.append(f"예전에 받은 적 있는 곡 {dupes}개 ('이미 받음' 표시)")
+            notes.append(f"예전에 {self.settings.format} 로 받은 적 있는 곡 {dupes}개 (다운로드 때 건너뜀)")
         if notes:
             self.notify(" · ".join(notes))
         if self.settings.auto_start:
             for t in fresh:
-                self.qm.enqueue(t)
+                if t.needs(self.settings.format):
+                    self.qm.enqueue(t)
 
     # ---- 목록 조작 -------------------------------------------------------------
     def delete(self, uids) -> None:
@@ -353,7 +354,6 @@ class WebApp:
                 if t.status.active:
                     self.qm.cancel(t)
                 self.tracks.pop(t.uid, None)
-                self.already.discard(t.uid)
                 if t.uid in self.order:
                     self.order.remove(t.uid)
             self.version += 1
@@ -362,7 +362,6 @@ class WebApp:
         with self.lock:
             for uid in [u for u in self.order if self.tracks[u].status in (Status.DONE, Status.SKIPPED)]:
                 self.tracks.pop(uid, None)
-                self.already.discard(uid)
                 self.order.remove(uid)
             self.version += 1
 
@@ -406,13 +405,13 @@ class WebApp:
 
     def retry(self, uids) -> None:
         for t in self._get(uids):
-            if t.status in (Status.FAILED, Status.CANCELLED):
+            if t.status in (Status.FAILED, Status.CANCELLED) or t.needs(self.settings.format):
                 self.qm.enqueue(t)
 
     def download(self, uids=None) -> int:
         with self.lock:
             pool = self._get(uids) if uids else [self.tracks[u] for u in self.order]
-            targets = [t for t in pool if t.status in (Status.READY, Status.FAILED, Status.CANCELLED)]
+            targets = [t for t in pool if t.needs(self.settings.format)]
         self.qm.set_concurrency(self.settings.max_concurrent)
         for t in targets:
             self.qm.enqueue(t)

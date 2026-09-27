@@ -247,14 +247,16 @@ function fillRow(li, t) {
   if (["DOWNLOADING", "CONVERTING", "TAGGING"].includes(t.status)) text += ` ${Math.round(t.progress)}%`;
   if (t.status === "RETRYING") text = t.message || "재시도 대기 중";
   if (ui.android && t.status === "DONE") text = "완료 · 음악 폴더에 저장됨";
-  const key = `${t.status}|${Math.round(t.progress)}|${t.already}|${text}`;
+  const key = `${t.status}|${Math.round(t.progress)}|${t.formats.join(",")}|${text}`;
   if (st.dataset.key !== key) {
     st.dataset.key = key;
     st.replaceChildren();
-    if (t.already && t.status === "READY") {
+    // 받은 형식 표시: mp3 / wav / mp3 wav
+    for (const f of t.formats) {
       const tag = document.createElement("span");
-      tag.className = "tag";
-      tag.textContent = "이미 받음";
+      tag.className = "tag fmt";
+      tag.textContent = f;
+      tag.title = `${f} 로 받음`;
       st.appendChild(tag);
     }
     const span = document.createElement("span");
@@ -318,8 +320,8 @@ function renderSelection() {
   $("#sel-count").textContent = `${n}곡 선택`;
   const sel = selectedTracks();
   $("#btn-sel-zip").hidden = ui.android || !sel.some((t) => t.has_file);
-  $("#btn-sel-retry").hidden = !sel.some((t) => ["FAILED", "CANCELLED", "READY"].includes(t.status));
-  $("#btn-sel-retry").textContent = sel.some((t) => t.status === "READY") ? "다운로드" : "재시도";
+  $("#btn-sel-retry").hidden = !sel.some((t) => t.can_download || ["FAILED", "CANCELLED"].includes(t.status));
+  $("#btn-sel-retry").textContent = sel.some((t) => t.can_download && !["FAILED", "CANCELLED"].includes(t.status)) ? "다운로드" : "재시도";
   $("#btn-sel-edit").hidden = sel.some((t) => t.active);
   $("#btn-select-all").textContent = n && n === (ui.state?.tracks.length || 0) ? "선택 해제" : "전체 선택";
 }
@@ -354,8 +356,8 @@ $("#btn-sel-delete").addEventListener("click", async () => {
 });
 $("#btn-sel-retry").addEventListener("click", async () => {
   const sel = selectedTracks();
-  const ready = sel.filter((t) => t.status === "READY").map((t) => t.uid);
   const failed = sel.filter((t) => ["FAILED", "CANCELLED"].includes(t.status)).map((t) => t.uid);
+  const ready = sel.filter((t) => t.can_download && !failed.includes(t.uid)).map((t) => t.uid);
   if (ready.length) await act("/api/download", { uids: ready });
   if (failed.length) await act("/api/retry", { uids: failed });
   clearSelection();
@@ -430,7 +432,7 @@ $("#auto-start").addEventListener("change", (e) => act("/api/settings", { settin
 
 $("#btn-download-all").addEventListener("click", () => {
   if (!ui.state || !ui.state.counts.total) return toast("다운로드할 곡이 없습니다. 링크를 먼저 추가하세요.");
-  act("/api/download", {}, (r) => (r.count ? `${r.count}곡 다운로드 시작` : "새로 받을 곡이 없습니다"));
+  act("/api/download", {}, (r) => (r.count ? `${r.count}곡 다운로드 시작` : `목록의 곡을 모두 ${ui.state.settings.format} 로 이미 받았습니다`));
 });
 $("#btn-cancel-all").addEventListener("click", () => {
   if (ui.state?.counts.active && confirm("진행 중인 다운로드를 모두 취소할까요?")) act("/api/cancel", {});

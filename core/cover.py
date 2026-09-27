@@ -42,7 +42,8 @@ def _trim_letterbox(img: Image.Image) -> Image.Image:
     return img
 
 
-def make_cover(raw: bytes, crop_square: bool = True, max_size: int = 1000) -> bytes:
+def make_cover(raw: bytes, crop_square: bool = True, max_size: int = 600) -> bytes:
+    """휴대용 플레이어 호환을 위해 600px 이하의 일반(baseline) JPEG 로 만든다."""
     img = Image.open(io.BytesIO(raw))
     img = img.convert("RGB")
     if crop_square:
@@ -54,7 +55,7 @@ def make_cover(raw: bytes, crop_square: bool = True, max_size: int = 1000) -> by
     if max(img.size) > max_size:
         img.thumbnail((max_size, max_size), Image.LANCZOS)
     out = io.BytesIO()
-    img.save(out, "JPEG", quality=92)
+    img.save(out, "JPEG", quality=92, progressive=False)
     return out.getvalue()
 
 

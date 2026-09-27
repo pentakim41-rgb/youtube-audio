@@ -112,10 +112,11 @@ class Pipeline:
             track.resolved = True
         if not track.duration and info.get("duration"):
             track.duration = int(info["duration"])
-        if not track.thumbnails and info.get("thumbnails"):
+        # 재생목록 조회 때 받은 썸네일은 작은 것(최대 336x188)뿐이라 다운로드 때 받은 전체 목록으로 바꾼다
+        if info.get("thumbnails"):
             track.thumbnails = [t for t in info["thumbnails"] if t.get("url")]
-        if not track.thumbnail:
-            track.thumbnail = info.get("thumbnail") or ""
+        if info.get("thumbnail"):
+            track.thumbnail = info["thumbnail"]
         notify(track)
         if self._skip_existing(track, settings, update):
             shutil.rmtree(workdir, ignore_errors=True)

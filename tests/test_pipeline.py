@@ -88,6 +88,8 @@ def test_mp3_full_flow(tmp_path, monkeypatch, source, cover_bytes):
     assert tags["title"] == "Blueming" and tags["artist"] == "IU" and tags["album"] == "Love poem"
     assert tags["year"] == "2019" and tags["track"] == "3" and tags["genre"] == "K-Pop" and tags["has_cover"]
     assert not ID3(str(out)).getall("COMM")  # 설명란에 유튜브 링크를 넣지 않는다
+    apic = ID3(str(out)).getall("APIC")[0]
+    assert apic.encoding == 0 and apic.desc == ""  # 워크맨 호환: Latin-1 + 빈 설명
     assert history.find("abcdefghijk", "mp3") == str(out)
     assert memory.lookup("IU Official") == "IU"  # 직접 고친 가수 이름 기억
     pcts = [p for _, p in events]

@@ -13,6 +13,7 @@ from mutagen.wave import WAVE
 
 from core.models import Track
 
+_LATIN1 = 0  # mutagen Encoding.LATIN1
 _UTF16 = 1  # mutagen Encoding.UTF16
 
 
@@ -33,7 +34,8 @@ def _frames(track: Track, cover: bytes | None, embed_cover: bool) -> list:
     if track.genre:
         frames.append(TCON(encoding=_UTF16, text=track.genre))
     if cover and embed_cover:
-        frames.append(APIC(encoding=_UTF16, mime="image/jpeg", type=3, desc="Cover", data=cover))
+        # 소니 워크맨 등 일부 기기는 커버 프레임이 Latin-1 + 빈 설명일 때만 커버를 표시한다
+        frames.append(APIC(encoding=_LATIN1, mime="image/jpeg", type=3, desc="", data=cover))
     return frames
 
 

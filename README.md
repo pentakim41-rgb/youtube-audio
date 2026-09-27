@@ -83,8 +83,9 @@ tests/                  pytest (실제 ffmpeg 로 변환·태그까지 검증), 
 
 `build.bat` 를 실행하면 (PyInstaller, 빌드용 가상환경 `.venv-build` 자동 생성)
 
-- `dist\YouTubeAudio\YouTubeAudio.exe` — 실행 파일 (같은 폴더의 `_internal` 이 있어야 실행됨)
-- `dist\YouTubeAudio.zip` — 배포용. 받는 사람은 압축을 풀고 `YouTubeAudio.exe` 를 실행하면 됩니다.
+- `dist\YouTubeAudio_날짜_시간.zip` — 배포용 (결과물은 이 파일 하나, 예: `YouTubeAudio_20260927_2039.zip`).
+  같은 "날짜_시간"이 프로그램 오른쪽 위에도 표시됩니다. 받는 사람은 압축을 풀고 `YouTubeAudio.exe` 를 실행하면 됩니다.
+  (exe 는 같은 폴더의 `_internal` 이 있어야 실행됨)
 
 Python, ffmpeg, Deno(유튜브 추출용 JavaScript 런타임)를 모두 포함하므로 받는 PC 에 따로 설치할 것이 없습니다.
 `bin\deno.exe` 가 없으면 빌드 때 자동으로 내려받습니다. 저장 폴더는 기본으로 exe 옆의 `추출사운드` 입니다.

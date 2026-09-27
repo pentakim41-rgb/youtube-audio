@@ -30,6 +30,19 @@ def resource_dir() -> Path:
     return app_dir()
 
 
+BUILD_STAMP_FILE = "build_stamp.txt"
+
+
+def build_stamp() -> str:
+    """배포판을 빌드한 시각 ("날짜_시간"). build.bat 이 exe 에 넣어 둔다. 소스로 실행하면 ''."""
+    if not is_frozen():
+        return ""
+    try:
+        return (resource_dir() / BUILD_STAMP_FILE).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def user_data_dir() -> Path:
     """설정/기록/로그를 저장하는 사용자 폴더."""
     if os.name == "nt":

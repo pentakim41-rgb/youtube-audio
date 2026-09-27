@@ -18,7 +18,7 @@ from ui.edit_dialog import EditDialog
 from ui.settings_dialog import SettingsDialog
 from utils import updater
 from utils.logger import get_logger
-from utils.paths import open_folder
+from utils.paths import build_stamp, open_folder
 
 log = get_logger("ui")
 
@@ -81,6 +81,12 @@ class MainWindow(ctk.CTk):
         self.url_entry.grid(row=0, column=0, sticky="ew")
         self.add_btn = ctk.CTkButton(top, text="리스트에 추가", width=130, height=38, command=self._add_from_entry)
         self.add_btn.grid(row=0, column=1, padx=(8, 0))
+
+        # 배포판 빌드 시각 (어떤 버전인지 확인용, 오른쪽 위 여백에 작게)
+        stamp = build_stamp()
+        if stamp:
+            ctk.CTkLabel(self, text=stamp, height=14, font=ctk.CTkFont(size=11),
+                         text_color="gray50").place(relx=1.0, x=-16, y=1, anchor="ne")
 
         # --- 2행: 옵션 ----------------------------------------------------------------
         opt = ctk.CTkFrame(self, fg_color="transparent")

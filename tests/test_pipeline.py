@@ -247,3 +247,18 @@ def test_needs():
     t.formats = set()
     t.status = Status.DOWNLOADING
     assert not t.needs("mp3")  # 진행 중인 곡은 다시 넣지 않는다
+
+
+def test_lyrics_saved_with_track(tmp_path, monkeypatch, source, cover_bytes):
+    from core.lyrics import Lyrics, read_lyrics
+    synced = "[00:01.00]첫 줄\n[00:02.00]둘째 줄\n"
+    monkeypatch.setattr(pipeline_mod, "fetch_lyrics", lambda *a, **k: Lyrics(synced, ""))
+    t = make_track()
+    run_track(tmp_path, monkeypatch, source, cover_bytes, t, format="mp3")
+    assert t.status == Status.DONE, t.message
+    out = tmp_path / "out" / "IU - Blueming.mp3"
+    assert "[00:02.00]둘째 줄" in out.with_suffix(".lrc").read_text(encoding="utf-8-sig")
+    assert ID3(str(out)).getall("USLT")[0].text == "첫 줄\n둘째 줄"
+    assert read_lyrics(out) == "첫 줄\n둘째 줄"
+
+

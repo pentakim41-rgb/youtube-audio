@@ -49,6 +49,7 @@ def fake_download(t, workdir, s, cb, cancel):
 mw.fetch_tracks = fake_fetch
 pipeline_mod.download_audio = fake_download
 pipeline_mod.fetch_cover = lambda *a, **k: None
+pipeline_mod.fetch_lyrics = lambda *a, **k: None
 pipeline_mod.work_root = lambda: tmp / "work"
 messagebox.askyesno = lambda *a, **k: True
 messagebox.askyesnocancel = lambda *a, **k: True
@@ -71,7 +72,12 @@ def pump(seconds):
 
 def shot(name):
     pump(0.3)
-    subprocess.run(["import", "-window", "root", str(tmp / name)], capture_output=True)
+    if sys.platform == "win32":  # 윈도우: 창 부분만 캡처
+        from PIL import ImageGrab
+        x, y = app.winfo_rootx(), app.winfo_rooty()
+        ImageGrab.grab((x, y, x + app.winfo_width(), y + app.winfo_height())).save(tmp / name)
+    else:
+        subprocess.run(["import", "-window", "root", str(tmp / name)], capture_output=True)
 
 
 pump(0.5)
@@ -112,12 +118,24 @@ while time.time() < end and not all(t.status.finished for t in app.tracks.values
     pump(0.1)
 pump(0.5)
 shot("3_done.png")
+# 7) 받은 곡 클릭 → 가사 구역에 가사 → 고쳐서 '다시저장'
+from core.lyrics import read_lyrics, save_lyrics  # noqa: E402
+t = next(t for t in app.tracks.values() if t.title == "Blueming")
+save_lyrics(Path(t.output_path), "첫 줄\n둘째 줄")
+app.tree.selection_set(str(t.uid))
+pump(0.3)
+assert app._lyrics_text() == "첫 줄\n둘째 줄", app._lyrics_text()
+app.lyrics_box.delete("1.0", "end")
+app.lyrics_box.insert("1.0", "첫 줄\n둘째 줄 고침")
+shot("4_lyrics.png")
+app._save_lyrics()
+assert read_lyrics(Path(t.output_path)) == "첫 줄\n둘째 줄 고침"
 res = {t.title: (t.status.value, t.output_path) for t in app.tracks.values()}
 print(res)
 assert all(v[0] == "완료" for v in res.values()), res
 outs = sorted(p.relative_to(tmp / "out").as_posix() for p in (tmp / "out").rglob("*.mp3"))
 print(outs)
-assert outs == ["BTS/테스트 앨범/BTS - Dynamite.mp3", "IU/테스트 앨범/IU - Blueming.mp3"], outs
+assert outs == ["BTS - Dynamite.mp3", "IU - Blueming.mp3"], outs
 app._clear_finished()
 pump(0.2)
 assert app.order == []

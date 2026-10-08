@@ -18,6 +18,7 @@ from core.cover import candidate_urls, fetch_cover
 from core.downloader import download_audio
 from core.errors import AppError, CancelledError
 from core.history import ArtistMemory, History
+from core.lyrics import fetch_lyrics, save_lyrics, strip_timestamps
 from core.metadata import apply_guess, guess_from_info
 from core.models import Status, Track
 from core.tagger import write_tags
@@ -165,9 +166,13 @@ class Pipeline:
         if final.exists():
             if settings.on_exists == "overwrite":
                 final.unlink()
+                final.with_suffix(".lrc").unlink(missing_ok=True)  # 예전 곡의 가사가 남지 않게
             else:
                 final = namer.unique_path(final)
         shutil.move(str(converted), str(final))
+        if settings.fetch_lyrics:
+            update(Status.TAGGING, TAG_END, "가사 찾는 중")
+            self._add_lyrics(track, final)
 
         track.output_path = str(final)
         track.formats.add(settings.format)
@@ -176,6 +181,18 @@ class Pipeline:
             self.memory.remember(track.channel, track.artist)
         shutil.rmtree(workdir, ignore_errors=True)
         update(Status.DONE, 100.0, "")
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _add_lyrics(track: Track, final: Path) -> None:
+        """가사를 찾아 파일 안(USLT)과 .lrc 에 저장. 못 찾거나 실패해도 곡 저장은 그대로 완료."""
+        try:
+            found = fetch_lyrics(track.artist, track.title, track.duration)
+            if found:
+                text = strip_timestamps(found.synced) if found.synced else found.plain
+                save_lyrics(final, text, found.synced)
+        except Exception as exc:
+            log.warning("가사 저장 실패 (%s): %s", track.display_name(), exc)
 
     # ------------------------------------------------------------------
     def _skip_existing(self, track: Track, settings: Settings, update) -> bool:

@@ -4,6 +4,7 @@ from __future__ import annotations
 import queue
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 import customtkinter as ctk
@@ -12,6 +13,7 @@ from config import Settings
 from core.errors import AppError, classify
 from core.fetcher import FetchResult, UrlInfo, analyze_url, extract_urls, fetch_tracks
 from core.history import ArtistMemory, History
+from core.lyrics import read_lyrics, save_lyrics
 from core.models import EDITABLE_FIELDS, Status, Track
 from core.queue_manager import QueueManager
 from ui.edit_dialog import EditDialog
@@ -49,13 +51,15 @@ class MainWindow(ctk.CTk):
         self.memory = memory
 
         self.title("유튜브 → MP3/WAV 변환기")
-        self.geometry("1000x680")
-        self.minsize(820, 520)
+        self.geometry("1400x700")
+        self.minsize(1100, 540)
 
         self.tracks: dict[int, Track] = {}  # uid → Track
         self.order: list[int] = []  # 목록에 보이는 순서
         self.ui_queue: "queue.Queue[tuple]" = queue.Queue()
         self.pending_fetches = 0
+        self.lyrics_uid: int | None = None  # 가사 구역에 보이는 곡
+        self.lyrics_loaded = ""  # 불러왔을 때 가사 (고쳤는지 비교용)
         self._fetch_lock = threading.Lock()
 
         self.qm = QueueManager(settings, history, memory, on_event=lambda t: self.ui_queue.put(("track", t)))
@@ -73,7 +77,7 @@ class MainWindow(ctk.CTk):
 
         # --- 1행: 링크 입력 + 리스트에 추가 --------------------------------------
         top = ctk.CTkFrame(self, fg_color="transparent")
-        top.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 6))
+        top.grid(row=0, column=0, columnspan=2, sticky="ew", padx=16, pady=(16, 6))
         top.grid_columnconfigure(0, weight=1)
         self.url_entry = ctk.CTkEntry(
             top, height=38, placeholder_text="유튜브 링크를 붙여넣고 Enter (여러 개를 한꺼번에 붙여넣어도 됩니다)"
@@ -90,7 +94,7 @@ class MainWindow(ctk.CTk):
 
         # --- 2행: 옵션 ----------------------------------------------------------------
         opt = ctk.CTkFrame(self, fg_color="transparent")
-        opt.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 6))
+        opt.grid(row=1, column=0, columnspan=2, sticky="ew", padx=16, pady=(0, 6))
         ctk.CTkLabel(opt, text="포맷").pack(side="left")
         self.format_seg = ctk.CTkSegmentedButton(opt, values=["mp3", "wav"], command=self._on_format, width=120)
         self.format_seg.set(self.settings.format)
@@ -164,7 +168,7 @@ class MainWindow(ctk.CTk):
 
         # --- 5행: 전체 진행률 / 상태 -------------------------------------------------------------
         bottom = ctk.CTkFrame(self, fg_color="transparent")
-        bottom.grid(row=4, column=0, sticky="ew", padx=16, pady=(6, 12))
+        bottom.grid(row=4, column=0, columnspan=2, sticky="ew", padx=16, pady=(6, 12))
         bottom.grid_columnconfigure(0, weight=1)
         self.progress = ctk.CTkProgressBar(bottom)
         self.progress.set(0)
@@ -174,6 +178,28 @@ class MainWindow(ctk.CTk):
         self.detail_label = ctk.CTkLabel(bottom, text="", anchor="w", text_color="gray30", justify="left")
         self.detail_label.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         self.bind("<Configure>", self._on_resize)
+
+        self._build_lyrics_panel()
+
+    def _build_lyrics_panel(self) -> None:
+        """오른쪽 가사 구역: 목록에서 받은 곡을 클릭하면 가사를 보여 주고 바로 고칠 수 있다."""
+        panel = ctk.CTkFrame(self, fg_color="transparent")
+        panel.grid(row=2, column=1, rowspan=2, sticky="nsew", padx=(0, 16), pady=6)
+        panel.grid_columnconfigure(0, weight=1)
+        panel.grid_rowconfigure(1, weight=1)
+        head = ctk.CTkFrame(panel, fg_color="transparent")
+        head.grid(row=0, column=0, sticky="ew", pady=(0, 4))
+        head.grid_columnconfigure(0, weight=1)
+        self.lyrics_title = ctk.CTkLabel(head, text="가사", anchor="w", width=250,
+                                         font=ctk.CTkFont(weight="bold"))
+        self.lyrics_title.grid(row=0, column=0, sticky="ew")
+        self.lyrics_save_btn = ctk.CTkButton(head, text="다시저장", width=90, command=self._save_lyrics,
+                                             state="disabled")
+        self.lyrics_save_btn.grid(row=0, column=1, padx=(8, 0))
+        self.lyrics_box = ctk.CTkTextbox(panel, width=360, wrap="word", undo=True,
+                                         font=ctk.CTkFont(family="Malgun Gothic", size=13))
+        self.lyrics_box.grid(row=1, column=0, sticky="nsew")
+        self._show_lyrics(None)
 
     def _bind_keys(self) -> None:
         self.url_entry.bind("<Return>", lambda _e: self._add_from_entry())
@@ -288,6 +314,8 @@ class MainWindow(ctk.CTk):
             "삭제", f"진행 중인 곡 {len(busy)}개는 취소하고 삭제합니다. 계속할까요?", parent=self
         ):
             return
+        if self.lyrics_uid in {t.uid for t in selected}:
+            self._show_lyrics(None)
         for t in selected:
             if t.status.active:
                 self.qm.cancel(t)
@@ -300,6 +328,9 @@ class MainWindow(ctk.CTk):
 
     def _clear_finished(self) -> None:
         for uid in [u for u in self.order if self.tracks[u].status in (Status.DONE, Status.SKIPPED)]:
+            if uid == self.lyrics_uid:
+                self._ask_save_lyrics()
+                self._show_lyrics(None)
             self.tree.delete(str(uid))
             self.tracks.pop(uid, None)
             self.order.remove(uid)
@@ -431,6 +462,9 @@ class MainWindow(ctk.CTk):
 
     def _on_select(self) -> None:
         sel = self._selected_tracks()
+        if len(sel) == 1 and sel[0].uid != self.lyrics_uid:
+            self._ask_save_lyrics()
+            self._show_lyrics(sel[0])
         if len(sel) == 1:
             t = sel[0]
             text = t.message or ""
@@ -439,6 +473,88 @@ class MainWindow(ctk.CTk):
             elif t.output_path:
                 text = f"저장 위치: {t.output_path}"
             self.detail_label.configure(text=text)
+
+    # ================================================================ 가사 구역
+    def _lyric_files(self, t: Track) -> list[Path]:
+        """이 곡의 받은 파일들 (mp3·wav 를 다 받았으면 둘 다)."""
+        paths = [t.output_path] + [self.history.find(t.video_id, fmt) for fmt in sorted(t.formats)]
+        out: list[Path] = []
+        for p in paths:
+            if p and Path(p).is_file() and Path(p) not in out:
+                out.append(Path(p))
+        return out
+
+    def _lyrics_text(self) -> str:
+        return self.lyrics_box.get("1.0", "end-1c").strip()
+
+    def _show_lyrics(self, t: Track | None) -> None:
+        files = self._lyric_files(t) if t else []
+        self.lyrics_box.configure(state="normal")
+        self.lyrics_box.delete("1.0", "end")
+        if not files:
+            self.lyrics_uid = None
+            self.lyrics_loaded = ""
+            self.lyrics_title.configure(text="가사")
+            if t:
+                hint = "이 곡은 아직 받지 않았습니다.\n다운로드가 끝나면 가사를 볼 수 있습니다."
+            else:
+                hint = "다운로드한 곡을 목록에서 클릭하면\n여기에 가사가 나옵니다."
+            self.lyrics_box.insert("1.0", hint)
+            self.lyrics_box.configure(state="disabled")
+            self.lyrics_save_btn.configure(state="disabled")
+            return
+        text = read_lyrics(files[0])
+        self.lyrics_uid = t.uid
+        self.lyrics_loaded = text
+        self.lyrics_box.insert("1.0", text)
+        self.lyrics_box.edit_reset()
+        self.lyrics_save_btn.configure(state="normal")
+        self._set_lyrics_title(t, text)
+
+    def _set_lyrics_title(self, t: Track, text: str) -> None:
+        head = "가사" if text else "가사 없음 (직접 입력 가능)"
+        self.lyrics_title.configure(text=f"{head} - {t.display_name()}"[:45])
+
+    def _ask_save_lyrics(self) -> None:
+        """다른 곡으로 넘어가기 전에, 고친 가사를 저장하지 않았으면 물어본다."""
+        if self.lyrics_uid is None or self.lyrics_uid not in self.tracks:
+            return
+        if self._lyrics_text() == self.lyrics_loaded.strip():
+            return
+        t = self.tracks[self.lyrics_uid]
+        if messagebox.askyesno("가사", f"'{t.display_name()}' 가사를 고쳤습니다. 저장할까요?", parent=self):
+            self._save_lyrics()
+
+    def _save_lyrics(self) -> None:
+        t = self.tracks.get(self.lyrics_uid) if self.lyrics_uid is not None else None
+        if not t:
+            return
+        files = self._lyric_files(t)
+        if not files:
+            messagebox.showerror("가사", "저장할 음악 파일을 찾을 수 없습니다. (옮기거나 지웠을 수 있습니다)", parent=self)
+            return
+        text = self._lyrics_text()
+        try:
+            for f in files:
+                save_lyrics(f, text)
+        except Exception as exc:
+            log.warning("가사 저장 실패: %s", exc)
+            messagebox.showerror(
+                "가사", f"가사를 저장하지 못했습니다.\n{exc}\n\n다른 프로그램에서 이 곡을 재생 중이면 닫고 다시 시도하세요.",
+                parent=self)
+            return
+        self.lyrics_loaded = text
+        self._set_lyrics_title(t, text)
+        self.detail_label.configure(text=f"가사 저장 완료: {t.display_name()}")
+
+    def _refresh_lyrics_for(self, t: Track) -> None:
+        """다운로드가 끝난 곡이 지금 선택된 곡이면 가사 구역을 새로 채운다 (고치던 중이면 건드리지 않음)."""
+        sel = self._selected_tracks()
+        if len(sel) != 1 or sel[0].uid != t.uid:
+            return
+        if self.lyrics_uid == t.uid and self._lyrics_text() != self.lyrics_loaded.strip():
+            return
+        self._show_lyrics(t)
 
     def _refresh_summary(self) -> None:
         total = len(self.order)
@@ -480,6 +596,8 @@ class MainWindow(ctk.CTk):
                     if track.uid in self.tracks:
                         self._update_row(track)
                         changed = True
+                        if track.status in (Status.DONE, Status.SKIPPED):
+                            self._refresh_lyrics_for(track)
                 elif kind == "fetched":
                     self._on_fetched(event[1])
                 elif kind == "fetch_error":
@@ -533,6 +651,7 @@ class MainWindow(ctk.CTk):
         if any(t.status.active for t in self.tracks.values()):
             if not messagebox.askyesno("종료", "진행 중인 다운로드가 있습니다. 취소하고 종료할까요?", parent=self):
                 return
+        self._ask_save_lyrics()
         self.qm.shutdown()
         self.settings.save()
         self.destroy()

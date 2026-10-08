@@ -35,6 +35,7 @@ class Settings:
     strip_emoji: bool = True
     crop_cover_square: bool = True
     use_musicbrainz: bool = True
+    fetch_lyrics: bool = True  # LRCLIB 에서 가사를 찾아 함께 저장
     wav_embed_cover: bool = False  # wav 의 커버 삽입은 플레이어 호환성이 낮아 기본 꺼짐
     cookies_browser: str = ""  # 연령 제한/봇 확인 시 사용
     cookies_file: str = ""  # cookies.txt (Netscape 형식)

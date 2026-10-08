@@ -47,6 +47,7 @@ class SettingsDialog(ctk.CTkToplevel):
         self.c_emoji = self._check("파일 이름에서 이모지 제거", s.strip_emoji)
         self.c_crop = self._check("커버를 정사각형으로 자르기", s.crop_cover_square)
         self.c_mb = self._check("MusicBrainz 로 앨범/연도/트랙/장르 보완 (단일 영상)", s.use_musicbrainz)
+        self.c_lyr = self._check("가사 찾아서 함께 저장 (파일 안 + .lrc)", s.fetch_lyrics)
 
         # ---- MP3 전용 ----
         self.mp3_title = self._section("MP3 설정", "저장 포맷이 mp3 일 때만 적용됩니다. 커버는 항상 파일 안에 넣습니다.")
@@ -197,6 +198,7 @@ class SettingsDialog(ctk.CTkToplevel):
         s.strip_emoji = bool(self.c_emoji.get())
         s.crop_cover_square = bool(self.c_crop.get())
         s.use_musicbrainz = bool(self.c_mb.get())
+        s.fetch_lyrics = bool(self.c_lyr.get())
         s.wav_embed_cover = bool(self.c_wavcover.get())
         s.check_updates = bool(self.c_updates.get())
         cookie = self.v_cookie.get()

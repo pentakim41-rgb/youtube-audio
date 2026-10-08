@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import webbrowser
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -18,7 +19,7 @@ from core.models import EDITABLE_FIELDS, Status, Track
 from core.queue_manager import QueueManager
 from ui.edit_dialog import EditDialog
 from ui.settings_dialog import SettingsDialog
-from utils import updater
+from utils import app_update, updater
 from utils.logger import get_logger
 from utils.paths import build_stamp, open_folder
 
@@ -607,6 +608,15 @@ class MainWindow(ctk.CTk):
                     messagebox.showerror("링크 조회 실패", f"{event[1]}\n\n{event[2]}", parent=self)
                 elif kind == "outdated":
                     self._ask_update(event[1], event[2])
+                elif kind == "app_update":
+                    self._ask_app_update(event[1])
+                elif kind == "update_progress":
+                    self.detail_label.configure(text=f"새 버전 받는 중... {event[1] * 100:.0f}%")
+                elif kind == "update_ready":
+                    if self._install_app_update(event[1], event[2]):
+                        return  # 창을 닫았으므로 더 처리하지 않는다
+                elif kind == "update_failed":
+                    self.detail_label.configure(text=f"업데이트 실패: {event[1][:150]}")
                 elif kind == "warnings":
                     messagebox.showwarning("환경 점검", "\n\n".join(event[1]), parent=self)
         except queue.Empty:
@@ -623,11 +633,67 @@ class MainWindow(ctk.CTk):
         if self.settings.check_updates:
 
             def work():
+                release = app_update.update_available()
+                if release:  # 새 배포판에 최신 yt-dlp 도 들어 있으므로 yt-dlp 안내는 생략
+                    self.ui_queue.put(("app_update", release))
+                    return
                 current, latest = updater.installed_version(), updater.latest_version()
                 if updater.is_outdated(current, latest):
                     self.ui_queue.put(("outdated", current, latest))
 
             threading.Thread(target=work, daemon=True).start()
+
+    # ---------------------------------------------------------------- 프로그램 자동 업데이트
+    def _ask_app_update(self, release: app_update.Release) -> None:
+        current = build_stamp()
+        if not app_update.can_install():
+            if messagebox.askyesno(
+                "프로그램 업데이트",
+                f"새 버전이 있습니다. ({current} → {release.stamp})\n\n"
+                "이 폴더에는 자동으로 바꿀 권한이 없습니다. 다운로드 페이지를 열까요?",
+                parent=self,
+            ):
+                webbrowser.open(release.page)
+            return
+        if not messagebox.askyesno(
+            "프로그램 업데이트",
+            f"새 버전이 있습니다. ({current} → {release.stamp})\n\n"
+            "지금 업데이트할까요? 받는 동안 기다리면, 프로그램이 잠깐 꺼졌다가 새 버전으로 다시 켜집니다.\n"
+            "(설정·기록·받은 음악은 그대로 남습니다)",
+            parent=self,
+        ):
+            return
+        self.detail_label.configure(text="새 버전 받는 중...")
+
+        def work():
+            try:
+                new_dir, work_dir = app_update.download_and_extract(
+                    release.zip_url, lambda f: self.ui_queue.put(("update_progress", f)))
+                self.ui_queue.put(("update_ready", new_dir, work_dir))
+            except Exception as exc:
+                log.warning("프로그램 업데이트 받기 실패: %s", exc)
+                self.ui_queue.put(("update_failed", str(exc)))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _install_app_update(self, new_dir: Path, work_dir: Path) -> bool:
+        """교체를 시작하고 창을 닫았으면 True."""
+        if any(t.status.active for t in self.tracks.values()):
+            if not messagebox.askyesno(
+                "프로그램 업데이트", "새 버전을 다 받았습니다.\n진행 중인 다운로드를 취소하고 지금 다시 시작할까요?\n"
+                "(아니오: 다음에 프로그램을 켤 때 다시 물어봅니다)", parent=self):
+                self.detail_label.configure(text="업데이트를 미뤘습니다.")
+                return False
+        self._ask_save_lyrics()
+        try:
+            app_update.install_and_restart(new_dir, work_dir)
+        except Exception as exc:
+            messagebox.showerror("프로그램 업데이트", f"업데이트를 시작하지 못했습니다.\n{exc}", parent=self)
+            return False
+        self.qm.shutdown()
+        self.settings.save()
+        self.destroy()
+        return True
 
     def _ask_update(self, current: str, latest: str) -> None:
         if not updater.can_self_update():

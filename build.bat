@@ -52,7 +52,16 @@ rmdir /s /q dist\YouTubeAudio
 echo.
 echo 완료: dist\%ZIPNAME%.zip  (yt-dlp %YTDLP%)
 echo 압축을 풀고 YouTubeAudio.exe 실행
-echo 참고: exe 판은 yt-dlp 자동 업데이트가 안 되므로, 유튜브가 바뀌면 다시 빌드하세요.
+echo.
+
+REM 깃허브 Releases 에 올리면, 배포판을 켤 때 새 버전을 자동으로 받아 업데이트한다
+choice /c YN /m "깃허브에 올려서 자동 업데이트로 배포할까요"
+if errorlevel 2 goto :done
+where gh >nul 2>nul || (echo gh ^(GitHub CLI^) 가 없습니다. winget install GitHub.cli 후 gh auth login 하세요. & goto :done)
+gh release create v%STAMP% "dist\%ZIPNAME%.zip" --title "%STAMP%" --notes "빌드 %STAMP% (yt-dlp %YTDLP%)" || (echo 올리기 실패. gh auth login 으로 로그인했는지 확인하세요. & goto :done)
+echo 올리기 완료: 배포판을 켜면 새 버전으로 업데이트할지 물어봅니다.
+
+:done
 pause
 exit /b 0
 

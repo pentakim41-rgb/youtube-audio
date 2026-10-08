@@ -77,7 +77,7 @@ class SettingsDialog(ctk.CTkToplevel):
         ).grid(row=self.row, column=0, columnspan=2, sticky="w", pady=(4, 8))
         self.row += 1
 
-        self.c_updates = self._check("시작할 때 yt-dlp 업데이트 확인", s.check_updates)
+        self.c_updates = self._check("시작할 때 새 버전 확인 (프로그램·yt-dlp)", s.check_updates)
         # yt-dlp 업데이트
         self.update_label = ctk.CTkLabel(self.body, text=f"yt-dlp 버전: {updater.installed_version() or '?'}", anchor="w")
         self.update_label.grid(row=self.row, column=0, sticky="w", pady=8)
